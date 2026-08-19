@@ -9,3 +9,7 @@ NHIỆM VỤ 1: Đọc & chuẩn bị cấu trúc dự án (patches/ 5 file .pat
 NHIỆM VỤ 2: Kiểm tra môi trường (depot_tools/git/python3/ninja) & xử lý diff offset nếu có source local.
 NHIỆM VỤ 3: Tạo test_stealth.py + kiểm tra tính toàn vẹn workflow GitHub Actions.
 YÊU CẦU: báo cáo từng bước; nếu phát hiện xung đột / cần xác nhận tag v151 thì dừng và thông báo.
+
+--- follow-up phiên 46 ---
+[2] Target build = Windows chrome.exe. 3 điểm chốt: tùy Claude quyết, miễn đủ tính năng + chuẩn như bản v146 cloakbrowser. Đẩy repo lên github đang mở sẵn.
+Quyết định: target_os=win x64; tag 151.0.7922.108; WebGL guarded-fallback (giữ GPU thật cho spoof per-profile, chỉ mask khi software renderer) — parity v146. Git init + commit xong (LF-safe). CHỜ URL repo GitHub của user để push (máy có GCM, chưa có credential/URL).
