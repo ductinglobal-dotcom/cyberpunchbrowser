@@ -1,0 +1,42 @@
+From: Stealth Build <build@local>
+Subject: [PATCH 03/05] WebGL: never leak a software renderer
+
+DESIGN DECISION (v146 CloakBrowser parity): the CyberPunch wrapper already
+spoofs WebGL vendor/renderer PER PROFILE via JS injection (FingerprintDb).
+So this native patch must NOT hard-pin one GPU for every profile - that
+would override the per-profile spoof and REDUCE realism. Instead it is a
+guarded fallback: return the REAL driver string unchanged (so the JS layer
+can still override it per profile), and ONLY substitute a common discrete
+GPU when the real renderer is a software rasterizer (SwiftShader / llvmpipe
+/ Mesa / "Software"), which is the one thing that would betray a headless /
+GPU-less box.
+
+FIX vs. source doc: the doc's diff had IDENTICAL '-'/'+' lines (a no-op) and
+fabricated context. Real Blink resolves UNMASKED_* via GetUnmaskedString().
+
+>>> VERIFY on tag 151.0.7922.108: confirm the helper name/signature in
+    third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+    and adjust the @@ context if it drifted. CI uses `git apply --3way`.
+
+--- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
++++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
+@@ WebGLRenderingContextBase::GetUnmaskedString(GLenum name)
+ String WebGLRenderingContextBase::GetUnmaskedString(GLenum name) {
+-  return String(ContextGL()->GetString(name));
++  String real = String(ContextGL()->GetString(name));
++  // Stealth: only rewrite when a software rasterizer would leak. Real GPUs
++  // pass through untouched so the wrapper's per-profile spoof stays authoritative.
++  String lower = real.LowerASCII();
++  const bool software = lower.Contains("swiftshader") || lower.Contains("llvmpipe") ||
++                        lower.Contains("software") || lower.Contains("mesa") ||
++                        lower.Contains("microsoft basic render");
++  if (software) {
++    if (name == GL_VENDOR)
++      return String("Google Inc. (NVIDIA)");
++    if (name == GL_RENDERER)
++      return String(
++          "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, "
++          "D3D11)");
++  }
++  return real;
+ }

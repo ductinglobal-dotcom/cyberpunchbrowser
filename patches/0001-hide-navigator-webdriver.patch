@@ -1,0 +1,18 @@
+From: Stealth Build <build@local>
+Subject: [PATCH 01/05] Hide navigator.webdriver at Blink level
+
+Force NavigatorAutomationInformation::webdriver() to return false so
+`navigator.webdriver` is always false regardless of the
+--enable-automation / AutomationControlled runtime state.
+
+--- a/third_party/blink/renderer/core/frame/navigator_automation_information.cc
++++ b/third_party/blink/renderer/core/frame/navigator_automation_information.cc
+@@ -14,7 +14,7 @@
+ #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+
+ bool NavigatorAutomationInformation::webdriver() const {
+-  return RuntimeEnabledFeatures::AutomationControlledEnabled();
++  return false;
+ }
+
+ void NavigatorAutomationInformation::Trace(Visitor* visitor) const {

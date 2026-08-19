@@ -1,0 +1,26 @@
+From: Stealth Build <build@local>
+Subject: [PATCH 02/05] Rename ChromeDriver $cdc_ marker to a benign prefix
+
+FIX vs. source doc: the doc's diff ADDED a second definition of
+kCustomObjectPrefix, which is a C++ redefinition error (two
+`const char kCustomObjectPrefix[]` in the same translation unit will
+not compile). The correct change REPLACES the value on the existing
+line. See QA_REPORT.md #02.
+
+NOTE (scope): this file lives in chrome/test/chromedriver/, i.e. the
+ChromeDriver binary, NOT chrome.exe. It only matters for Selenium /
+ChromeDriver automation (the `$cdc_...` / `cdc_` document properties
+sites probe for). A Playwright/CDP driver does not inject $cdc_ at all,
+so this patch is a no-op for the CyberPunch use case. Kept for
+completeness; safe to drop if you never drive via chromedriver.
+
+--- a/chrome/test/chromedriver/chrome/custom_v8_functions.cc
++++ b/chrome/test/chromedriver/chrome/custom_v8_functions.cc
+@@ -8,7 +8,7 @@ namespace {
+
+ // Prefix for objects ChromeDriver injects into the page's JS context.
+-const char kCustomObjectPrefix[] = "$cdc_";
++const char kCustomObjectPrefix[] = "$_lib_";
+
+ const char kCallFunctionScript[] =
+     "(function() {"

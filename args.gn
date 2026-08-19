@@ -1,0 +1,27 @@
+# Chromium v151 Stealth - GN build args (out/StealthRelease/args.gn)
+# Optimized production build: small, fast, no Google telemetry.
+
+is_official_build = true
+is_debug = false
+is_component_build = false
+symbol_level = 0
+blink_symbol_level = 0
+chrome_pgo_phase = 0
+
+# Strip Google reporting / API baked-in creds.
+google_api_key = ""
+google_default_client_id = ""
+google_default_client_secret = ""
+
+# Disable internal SafeBrowsing telemetry.
+safe_browsing_mode = 0
+
+# Do not stop the build on warnings (patched files may warn).
+treat_warnings_as_errors = false
+
+# ---------------------------------------------------------------------------
+# TARGET OS = WINDOWS x64 (chốt: tool CyberPunch cần chrome.exe).
+# Built on a windows-2022 GitHub runner (VS 2022 + Windows SDK preinstalled).
+target_os  = "win"
+target_cpu = "x64"
+# ---------------------------------------------------------------------------

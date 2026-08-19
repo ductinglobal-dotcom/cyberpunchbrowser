@@ -1,0 +1,27 @@
+From: Stealth Build <build@local>
+Subject: [PATCH 05/05] Force event.isTrusted = true
+
+Default is_trusted_ to true so CDP-dispatched input events report
+isTrusted === true.
+
+>>> SECURITY / DETECTION WARNING (see QA_REPORT.md #05): this makes EVERY
+    Event default to isTrusted=true, including events a page dispatches
+    itself via new Event()/dispatchEvent(). Real browsers report
+    isTrusted=false for those, so a site that constructs an event and
+    reads .isTrusted will see an anomaly - this can BACKFIRE as its own
+    tell, and it weakens web security assumptions. A cleaner approach is
+    to flip isTrusted only on the CDP Input.dispatch* code path
+    (InputHandler / SyntheticGestureController) rather than in the base
+    Event ctor. Ship this hunk only if you accept that trade-off.
+
+--- a/third_party/blink/renderer/core/dom/events/event.cc
++++ b/third_party/blink/renderer/core/dom/events/event.cc
+@@ -128,7 +128,7 @@ Event::Event(const AtomicString& event_type,
+              Bubbles bubbles,
+              Cancelable cancelable,
+              ComposedMode composed_mode)
+-    : is_trusted_(false),
++    : is_trusted_(true),
+       type_(event_type),
+       bubbles_(bubbles == Bubbles::kYes),
+       cancelable_(cancelable == Cancelable::kYes),

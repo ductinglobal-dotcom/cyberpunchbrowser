@@ -1,0 +1,36 @@
+From: Stealth Build <build@local>
+Subject: [PATCH 04/05] Canvas anti-fingerprint sub-pixel noise
+
+Perturb the blue channel of getImageData() output so canvas fingerprint
+hashes differ from the raw render, defeating CRC/hash-based canvas
+fingerprinting while staying visually identical.
+
+QA NOTES (see QA_REPORT.md #04):
+  * The doc XORs a FIXED 0x01 on every pixel => the perturbed hash is
+    still DETERMINISTIC (same on every render), so it is stable but does
+    NOT vary per profile as the checklist claims. To make it vary per
+    profile, seed the toggle from a per-session value plumbed in from the
+    launcher (e.g. an env-derived seed) instead of a constant.
+  * toDataURL()/toBlob() go through getImageData internally in most paths
+    but VERIFY on v151; if not, apply the same perturbation in the
+    StaticBitmapImage readback path too.
+  * API: on v151 confirm the accessor is data()->Data() vs data()->View();
+    the buffer accessor name drifts. Adjust before building.
+
+--- a/third_party/blink/renderer/core/html/canvas/canvas_rendering_context_2d.cc
++++ b/third_party/blink/renderer/core/html/canvas/canvas_rendering_context_2d.cc
+@@ ImageData* CanvasRenderingContext2D::getImageData(
+     ImageData* image_data = BaseRenderingContext2D::getImageData(
+         sx, sy, sw, sh, exception_state);
++    if (image_data && image_data->data()) {
++      auto* buffer = image_data->data()->View();
++      uint8_t* pixels = static_cast<uint8_t*>(buffer->BaseAddress());
++      const size_t length = buffer->byteLength();
++      // Sub-pixel perturbation on the blue channel (index i+2), invisible
++      // to the eye but breaks canvas hash fingerprinting.
++      for (size_t i = 0; i + 2 < length; i += 4) {
++        pixels[i + 2] ^= 0x01;
++      }
++    }
+     return image_data;
+ }

@@ -1,0 +1,113 @@
+name: Build Chromium v151 Stealth (Windows x64)
+
+# Produces a WINDOWS chrome.exe + runtime files (parity with the CloakBrowser
+# v146 cache layout) so the CyberPunch tool can consume it via
+# CLOAKBROWSER_BINARY_PATH -- no Pro license needed.
+#
+# HEAVY BUILD WARNING: a from-scratch Windows Chromium build needs ~100+ GB of
+# disk and many hours. GitHub-hosted windows-2022 runners give ~85 GB free, so
+# this may fail on disk. If it does, use a self-hosted runner or a larger runner
+# (see QA_REPORT.md "Runner size"). Shallow sync (--no-history) is used to help.
+
+on:
+  workflow_dispatch:
+    inputs:
+      chromium_tag:
+        description: 'Exact Chromium git tag'
+        required: true
+        default: '151.0.7922.108'
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 2160
+    env:
+      DEPOT_TOOLS_WIN_TOOLCHAIN: '0'          # use the runner's VS 2022, not Google's internal pkg
+      GYP_MSVS_VERSION: '2022'
+      DEPOT_TOOLS_UPDATE: '1'
+    steps:
+      - name: Checkout repo (patches live here)
+        uses: actions/checkout@v4
+        with:
+          path: stealth-repo
+
+      - name: Free up disk
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Format-Table -Auto
+          # Drop big preinstalled SDKs we do not need, reclaim space for the checkout.
+          foreach ($p in @("$env:AGENT_TOOLSDIRECTORY","C:\Android","C:\Program Files\dotnet\sdk\NuGetFallbackFolder")) {
+            if (Test-Path $p) { try { Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue } catch {} }
+          }
+
+      - name: Setup depot_tools
+        shell: cmd
+        run: |
+          git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git C:\depot_tools
+          echo C:\depot_tools>>%GITHUB_PATH%
+
+      - name: Fetch Chromium source at tag
+        shell: cmd
+        run: |
+          set PATH=C:\depot_tools;%PATH%
+          mkdir C:\c && cd C:\c
+          call fetch --nohooks --no-history chromium
+          cd src
+          call git fetch --tags --depth 1 origin "tags/${{ github.event.inputs.chromium_tag }}"
+          call git checkout "tags/${{ github.event.inputs.chromium_tag }}"
+          call gclient sync -D --force --no-history
+
+      - name: Apply stealth patches (auto-fix offsets with 3-way)
+        shell: bash
+        run: |
+          cd /c/c/src
+          for patch in "$GITHUB_WORKSPACE"/stealth-repo/patches/*.patch; do
+            echo "== Applying $(basename "$patch") =="
+            if ! git apply --3way --whitespace=fix "$patch"; then
+              echo "::error::Patch failed to apply: $patch (rebase against this tag - see QA_REPORT.md)"
+              exit 1
+            fi
+          done
+
+      - name: Generate GN configuration
+        shell: cmd
+        run: |
+          set PATH=C:\depot_tools;%PATH%
+          cd C:\c\src
+          mkdir out\StealthRelease
+          copy /Y "%GITHUB_WORKSPACE%\stealth-repo\args.gn" out\StealthRelease\args.gn
+          call gn gen out\StealthRelease
+
+      - name: Compile chrome
+        shell: cmd
+        run: |
+          set PATH=C:\depot_tools;%PATH%
+          cd C:\c\src
+          call autoninja -C out\StealthRelease chrome
+
+      - name: Package runtime (parity with CloakBrowser cache)
+        shell: pwsh
+        run: |
+          $o = "C:\c\src\out\StealthRelease"
+          $stage = "C:\stage\chromium-v151-stealth"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          $files = @(
+            'chrome.exe','chrome.dll','chrome_elf.dll','chrome_proxy.exe',
+            'chrome_100_percent.pak','chrome_200_percent.pak','resources.pak',
+            'icudtl.dat','snapshot_blob.bin','v8_context_snapshot.bin',
+            'dxcompiler.dll','dxil.dll','vk_swiftshader.dll','vulkan-1.dll',
+            'libEGL.dll','libGLESv2.dll','d3dcompiler_47.dll','mojo_core.dll'
+          )
+          foreach ($f in $files) { if (Test-Path "$o\$f") { Copy-Item "$o\$f" $stage -Force } }
+          if (Test-Path "$o\locales") { Copy-Item "$o\locales" $stage -Recurse -Force }
+          # version marker the wrapper looks for
+          "${{ github.event.inputs.chromium_tag }}" | Out-File "$stage\VERSION.txt" -Encoding ascii
+          Compress-Archive -Path "$stage\*" -DestinationPath "C:\chromium-v151-stealth-win-x64.zip" -Force
+          Get-Item "C:\chromium-v151-stealth-win-x64.zip" | Select-Object Name,Length
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-v151-stealth-win-x64
+          path: C:\chromium-v151-stealth-win-x64.zip
+          if-no-files-found: error

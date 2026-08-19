@@ -1,0 +1,11 @@
+===== Dự án: Chromium v151 Stealth (build từ source, thay CloakBrowser Pro) =====
+
+===== Phiên: 2026-08-19 (phiên 46) =====
+[1] (Phần 3 của prompt gộp) Bạn là một Senior Chromium Engine & Anti-Detect Reverse Engineer.
+Tôi muốn bạn thực thi quy trình tạo một bản build Chromium v151 Stealth (Anti-detect tương đương CloakBrowser).
+Tài liệu hướng dẫn chi tiết và toàn bộ code patch C++ đã được chuẩn bị sẵn tại:
+~/Downloads/Huong_Dan_Build_Chromium_v151_Stealth.md
+NHIỆM VỤ 1: Đọc & chuẩn bị cấu trúc dự án (patches/ 5 file .patch, args.gn, .github/workflows/build-stealth-chromium.yml).
+NHIỆM VỤ 2: Kiểm tra môi trường (depot_tools/git/python3/ninja) & xử lý diff offset nếu có source local.
+NHIỆM VỤ 3: Tạo test_stealth.py + kiểm tra tính toàn vẹn workflow GitHub Actions.
+YÊU CẦU: báo cáo từng bước; nếu phát hiện xung đột / cần xác nhận tag v151 thì dừng và thông báo.
