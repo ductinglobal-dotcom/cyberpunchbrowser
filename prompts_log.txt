@@ -13,3 +13,7 @@ YÊU CẦU: báo cáo từng bước; nếu phát hiện xung đột / cần xá
 --- follow-up phiên 46 ---
 [2] Target build = Windows chrome.exe. 3 điểm chốt: tùy Claude quyết, miễn đủ tính năng + chuẩn như bản v146 cloakbrowser. Đẩy repo lên github đang mở sẵn.
 Quyết định: target_os=win x64; tag 151.0.7922.108; WebGL guarded-fallback (giữ GPU thật cho spoof per-profile, chỉ mask khi software renderer) — parity v146. Git init + commit xong (LF-safe). CHỜ URL repo GitHub của user để push (máy có GCM, chưa có credential/URL).
+
+--- follow-up phiên 46 (tiếp) ---
+[3] Xác nhận hướng làm đúng là GitHub Actions (fork repo build Chromium, sửa tag v151, thêm patches/, kích hoạt CI xuất binary .zip — không tốn tài nguyên máy). Gửi link repo mới tinh: https://github.com/ductinglobal-dotcom/cyberpunchbrowser
+Kết quả: remote add origin + push -u origin main THÀNH CÔNG (GCM đã có credential, không cần login lại). 14 file lên main, HEAD=bb44f50. Repo sẵn sàng chạy Actions → Run workflow (tag mặc định 151.0.7922.108) → tải artifact chromium-v151-stealth-win-x64.zip.
