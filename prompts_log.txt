@@ -21,3 +21,7 @@ Kết quả: remote add origin + push -u origin main THÀNH CÔNG (GCM đã có 
 --- follow-up phiên 46 (fix CI #1) ---
 [4] đang bị lỗi như hình log.jpg trong Downloads, bạn hãy check và sửa lỗi tiếp dùm mình nhé.
 Chẩn đoán: Actions run #1 chết ở bước "Apply stealth patches": `cd /c/c/src: No such file or directory` (exit 1). Fetch (2h54m) ĐÃ OK → source ở C:\c\src. Chỉ mỗi bước này dùng shell bash + path Unix /c/c/src bị lệch drive-mapping. Fix: viết lại bước sang pwsh + path native C:\c\src (đồng bộ các bước cmd/pwsh khác) + apply có fallback (--recount, --3way, -C1) chịu lệch dòng.
+
+--- follow-up phiên 46 (fix CI #2) ---
+[5] github lại lỗi như log2.jpg trong Downloads, hãy kiểm tra và fix cho mình.
+Chẩn đoán: run #2 chết ở Apply: `Set-Location: Cannot find path 'C:\c\src' because it does not exist`. Fetch xanh 2h40m nhưng src KHÔNG ở C:\c\src. Gốc rễ: `mkdir C:\c && cd C:\c` nếu mkdir fail thì cd không chạy (cmd không fail-fast) → fetch đổ cây vào workspace ổ D:. Fix toàn diện: (a) bước Free-up chọn ổ (C:/D:) nhiều chỗ nhất + ghi CHROMIUM_ROOT/CHROMIUM_SRC ra $GITHUB_ENV; (b) Fetch fail-fast (|| exit /b 1) + verify %CHROMIUM_SRC%\BUILD.gn tồn tại (fail LOUD ngay thay vì 3h sau) + in dung lượng ổ; (c) mọi bước Apply/GN/Compile/Package đọc path từ CHROMIUM_SRC (bỏ hết C:\c\src hardcode); (d) dọn đĩa mạnh hơn (thêm Azure SDK/Postgres/Mongo/hostedtoolcache).

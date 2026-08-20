@@ -31,14 +31,28 @@ jobs:
         with:
           path: stealth-repo
 
-      - name: Free up disk
+      - name: Free up disk and pick checkout drive
         shell: pwsh
         run: |
-          Get-PSDrive -PSProvider FileSystem | Format-Table -Auto
           # Drop big preinstalled SDKs we do not need, reclaim space for the checkout.
-          foreach ($p in @("$env:AGENT_TOOLSDIRECTORY","C:\Android","C:\Program Files\dotnet\sdk\NuGetFallbackFolder")) {
+          foreach ($p in @("$env:AGENT_TOOLSDIRECTORY","C:\Android","C:\Program Files\dotnet\sdk\NuGetFallbackFolder",
+                           "C:\Program Files\Microsoft SDKs\Azure","C:\Program Files (x86)\Microsoft SDKs\Azure",
+                           "C:\Program Files\PostgreSQL","C:\Program Files\MongoDB","C:\hostedtoolcache")) {
             if (Test-Path $p) { try { Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue } catch {} }
           }
+          Get-PSDrive -PSProvider FileSystem | Format-Table Name,@{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}},@{n='UsedGB';e={[math]::Round($_.Used/1GB,1)}} -Auto
+          # Pick the fixed drive (C: or D:) with the MOST free space for the ~100GB tree.
+          # Run #2 proved the tree does NOT reliably land on C:\c -- so choose dynamically
+          # and hand the real path to every later step via $GITHUB_ENV.
+          $cand = foreach ($d in 'C','D') {
+            $psd = Get-PSDrive -Name $d -ErrorAction SilentlyContinue
+            if ($psd) { [pscustomobject]@{ Letter=$d; Free=$psd.Free } }
+          }
+          $best = $cand | Sort-Object Free -Descending | Select-Object -First 1
+          $root = "$($best.Letter):\cr"
+          Write-Host "Chosen checkout drive: $($best.Letter): ($([math]::Round($best.Free/1GB,1)) GB free) -> $root"
+          "CHROMIUM_ROOT=$root"      | Out-File $env:GITHUB_ENV -Append -Encoding ascii
+          "CHROMIUM_SRC=$root\src"   | Out-File $env:GITHUB_ENV -Append -Encoding ascii
 
       - name: Setup depot_tools
         shell: cmd
@@ -50,21 +64,28 @@ jobs:
         shell: cmd
         run: |
           set PATH=C:\depot_tools;%PATH%
-          mkdir C:\c && cd C:\c
-          call fetch --nohooks --no-history chromium
-          cd src
-          call git fetch --tags --depth 1 origin "tags/${{ github.event.inputs.chromium_tag }}"
-          call git checkout "tags/${{ github.event.inputs.chromium_tag }}"
-          call gclient sync -D --force --no-history
+          echo Checkout root: %CHROMIUM_ROOT%
+          if not exist "%CHROMIUM_ROOT%" mkdir "%CHROMIUM_ROOT%" || exit /b 1
+          cd /d "%CHROMIUM_ROOT%" || exit /b 1
+          call fetch --nohooks --no-history chromium || exit /b 1
+          cd /d "%CHROMIUM_SRC%" || exit /b 1
+          call git fetch --tags --depth 1 origin "tags/${{ github.event.inputs.chromium_tag }}" || exit /b 1
+          call git checkout "tags/${{ github.event.inputs.chromium_tag }}" || exit /b 1
+          call gclient sync -D --force --no-history || exit /b 1
+          REM Fail LOUD now (not 3h later) if the tree did not materialise.
+          if not exist "%CHROMIUM_SRC%\BUILD.gn" ( echo ::error::Chromium src missing at %CHROMIUM_SRC% after fetch & dir "%CHROMIUM_ROOT%" & exit /b 1 )
+          echo Source ready at %CHROMIUM_SRC%
+          fsutil volume diskfree %CHROMIUM_ROOT:~0,2%
 
       - name: Apply stealth patches (auto-fix offsets)
         shell: pwsh
         run: |
-          # Use the NATIVE Windows path (C:\c\src) like every other step -- the
-          # old `shell: bash` + `cd /c/c/src` broke on the runner's git-bash
-          # drive mapping ("No such file or directory"). git ships with depot_tools.
+          # Use the REAL checkout path captured by the "pick checkout drive" step
+          # ($env:CHROMIUM_SRC). Do NOT hardcode C:\c\src -- run #2 proved the tree
+          # does not reliably land there. git ships with depot_tools.
           $env:PATH = "C:\depot_tools;$env:PATH"
-          Set-Location C:\c\src
+          if (-not (Test-Path $env:CHROMIUM_SRC)) { Write-Host "::error::CHROMIUM_SRC not found: $env:CHROMIUM_SRC"; exit 1 }
+          Set-Location $env:CHROMIUM_SRC
           $patches = Get-ChildItem "$env:GITHUB_WORKSPACE\stealth-repo\patches\*.patch" | Sort-Object Name
           if (-not $patches) { Write-Host "::error::No .patch files found"; exit 1 }
           foreach ($p in $patches) {
@@ -94,22 +115,22 @@ jobs:
         shell: cmd
         run: |
           set PATH=C:\depot_tools;%PATH%
-          cd C:\c\src
-          mkdir out\StealthRelease
-          copy /Y "%GITHUB_WORKSPACE%\stealth-repo\args.gn" out\StealthRelease\args.gn
-          call gn gen out\StealthRelease
+          cd /d "%CHROMIUM_SRC%" || exit /b 1
+          if not exist out\StealthRelease mkdir out\StealthRelease
+          copy /Y "%GITHUB_WORKSPACE%\stealth-repo\args.gn" out\StealthRelease\args.gn || exit /b 1
+          call gn gen out\StealthRelease || exit /b 1
 
       - name: Compile chrome
         shell: cmd
         run: |
           set PATH=C:\depot_tools;%PATH%
-          cd C:\c\src
-          call autoninja -C out\StealthRelease chrome
+          cd /d "%CHROMIUM_SRC%" || exit /b 1
+          call autoninja -C out\StealthRelease chrome || exit /b 1
 
       - name: Package runtime (parity with CloakBrowser cache)
         shell: pwsh
         run: |
-          $o = "C:\c\src\out\StealthRelease"
+          $o = "$env:CHROMIUM_SRC\out\StealthRelease"
           $stage = "C:\stage\chromium-v151-stealth"
           New-Item -ItemType Directory -Force $stage | Out-Null
           $files = @(
