@@ -17,3 +17,7 @@ Quyết định: target_os=win x64; tag 151.0.7922.108; WebGL guarded-fallback (
 --- follow-up phiên 46 (tiếp) ---
 [3] Xác nhận hướng làm đúng là GitHub Actions (fork repo build Chromium, sửa tag v151, thêm patches/, kích hoạt CI xuất binary .zip — không tốn tài nguyên máy). Gửi link repo mới tinh: https://github.com/ductinglobal-dotcom/cyberpunchbrowser
 Kết quả: remote add origin + push -u origin main THÀNH CÔNG (GCM đã có credential, không cần login lại). 14 file lên main, HEAD=bb44f50. Repo sẵn sàng chạy Actions → Run workflow (tag mặc định 151.0.7922.108) → tải artifact chromium-v151-stealth-win-x64.zip.
+
+--- follow-up phiên 46 (fix CI #1) ---
+[4] đang bị lỗi như hình log.jpg trong Downloads, bạn hãy check và sửa lỗi tiếp dùm mình nhé.
+Chẩn đoán: Actions run #1 chết ở bước "Apply stealth patches": `cd /c/c/src: No such file or directory` (exit 1). Fetch (2h54m) ĐÃ OK → source ở C:\c\src. Chỉ mỗi bước này dùng shell bash + path Unix /c/c/src bị lệch drive-mapping. Fix: viết lại bước sang pwsh + path native C:\c\src (đồng bộ các bước cmd/pwsh khác) + apply có fallback (--recount, --3way, -C1) chịu lệch dòng.

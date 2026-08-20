@@ -57,17 +57,38 @@ jobs:
           call git checkout "tags/${{ github.event.inputs.chromium_tag }}"
           call gclient sync -D --force --no-history
 
-      - name: Apply stealth patches (auto-fix offsets with 3-way)
-        shell: bash
+      - name: Apply stealth patches (auto-fix offsets)
+        shell: pwsh
         run: |
-          cd /c/c/src
-          for patch in "$GITHUB_WORKSPACE"/stealth-repo/patches/*.patch; do
-            echo "== Applying $(basename "$patch") =="
-            if ! git apply --3way --whitespace=fix "$patch"; then
-              echo "::error::Patch failed to apply: $patch (rebase against this tag - see QA_REPORT.md)"
+          # Use the NATIVE Windows path (C:\c\src) like every other step -- the
+          # old `shell: bash` + `cd /c/c/src` broke on the runner's git-bash
+          # drive mapping ("No such file or directory"). git ships with depot_tools.
+          $env:PATH = "C:\depot_tools;$env:PATH"
+          Set-Location C:\c\src
+          $patches = Get-ChildItem "$env:GITHUB_WORKSPACE\stealth-repo\patches\*.patch" | Sort-Object Name
+          if (-not $patches) { Write-Host "::error::No .patch files found"; exit 1 }
+          foreach ($p in $patches) {
+            Write-Host "== Applying $($p.Name) =="
+            # Try progressively more tolerant strategies so small line-offset
+            # drift against this exact tag does not fail the (3h) build.
+            $ok = $false
+            # git writes progress/errors to stderr; do NOT merge with 2>&1 or the
+            # runner's $ErrorActionPreference='Stop' turns it into a terminating error.
+            $ErrorActionPreference = 'Continue'
+            foreach ($opts in @(
+                ,@('--whitespace=fix')
+                ,@('--recount','--whitespace=fix')
+                ,@('--3way','--recount','--whitespace=fix')
+                ,@('-C1','--recount','--whitespace=fix'))) {
+              & git apply @opts "$($p.FullName)"
+              if ($LASTEXITCODE -eq 0) { $ok = $true; Write-Host "   applied via: git apply $($opts -join ' ')"; break }
+            }
+            if (-not $ok) {
+              Write-Host "::error::Patch failed to apply: $($p.Name) (rebase against tag ${{ github.event.inputs.chromium_tag }} - see QA_REPORT.md)"
               exit 1
-            fi
-          done
+            }
+          }
+          Write-Host "All patches applied."
 
       - name: Generate GN configuration
         shell: cmd

@@ -51,3 +51,9 @@ The `patches/*.patch` files in this repo are the **corrected** versions.
 4. **WebGL GPU string.** Patch 03 hardcodes an RTX 3060 / NVIDIA string.
    Set this to whatever your fleet should look like (ideally matched to the
    fingerprint DB the CyberPunch tool already ships).
+
+## LOG LỖI (CI runs)
+
+| Ngày | Lỗi | Nguyên nhân | Cách xử lý | Trạng thái |
+|------|-----|-------------|-----------|------------|
+| 2026-08-20 | Run #1 chết ở step "Apply stealth patches": `cd /c/c/src: No such file or directory` (exit 1). Fetch 2h54m đã OK, source ở `C:\c\src`. | Chỉ mỗi step này dùng `shell: bash` + path Unix `/c/c/src`; git-bash trên runner windows-2022 không map được đường dẫn đó (các step khác dùng cmd/pwsh + `C:\c\src` nên OK). | Viết lại step sang `shell: pwsh`, `Set-Location C:\c\src` (path native đồng bộ các step khác), thêm `C:\depot_tools` vào PATH cho git, apply theo chuỗi fallback (`--whitespace=fix` → `--recount` → `--3way` → `-C1`) chịu lệch dòng. | ✅ Đã fix (chờ re-run xác nhận) |
