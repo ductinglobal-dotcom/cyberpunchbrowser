@@ -18,7 +18,7 @@ two sites. String::LowerASCII()/Contains() and WebGLAny() are already in scope.
 
 --- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
 +++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
-@@ -4192,10 +4192,18 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+@@ -4192,14 +4192,31 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
      case WebGLDebugRendererInfo::kUnmaskedRendererWebgl:
        if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
 -        return WebGLAny(script_state,

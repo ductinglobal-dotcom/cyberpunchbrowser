@@ -14,7 +14,7 @@ is no unreachable/dead code (Chromium builds with -Werror).
 
 --- a/third_party/blink/renderer/core/frame/navigator.cc
 +++ b/third_party/blink/renderer/core/frame/navigator.cc
-@@ -100,7 +100,9 @@ bool Navigator::cookieEnabled() const {
+@@ -100,8 +100,5 @@ bool Navigator::cookieEnabled() const {
  bool Navigator::webdriver() const {
 -  if (RuntimeEnabledFeatures::AutomationControlledEnabled())
 -    return true;

@@ -13,8 +13,14 @@ google_api_key = ""
 google_default_client_id = ""
 google_default_client_secret = ""
 
-# Disable internal SafeBrowsing telemetry.
-safe_browsing_mode = 0
+# SafeBrowsing: keep the code compiled (mode 2 = desktop default) so the
+# safe_browsing GN targets that chrome's graph references still resolve.
+# NOTE: mode 0 breaks `gn gen` -- test/feedback targets depend on
+# //components/safe_browsing/... which mode 0 compiles out -> "Unresolved
+# dependencies". Telemetry stays inert anyway because google_api_key is blank
+# (Safe Browsing cannot phone home without an API key), and it can be turned
+# off at runtime via prefs/policy in the CyberPunch wrapper.
+safe_browsing_mode = 2
 
 # Do not stop the build on warnings (patched files may warn).
 treat_warnings_as_errors = false
