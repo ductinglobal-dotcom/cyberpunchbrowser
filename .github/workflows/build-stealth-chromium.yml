@@ -84,22 +84,33 @@ jobs:
           New-Item -ItemType Directory -Force $env:CHROMIUM_ROOT | Out-Null
           Set-Location $env:CHROMIUM_ROOT
 
-          # Write the gclient solution DIRECTLY instead of using `fetch`, which cannot be
-          # re-run after a partial failure (it errors ".gclient already exists"). By owning
-          # the config we can RETRY `gclient sync` on every network drop -- sync resumes.
-          $spec = 'solutions = [{ "name": "src", "url": "https://chromium.googlesource.com/chromium/src.git", "custom_deps": {}, "custom_vars": {}, },]'
-          & gclient config --spec $spec
+          # Let `fetch` create the checkout: it writes a CORRECT .gclient (proper Python
+          # with quoted keys) and starts the first sync. Run #4 proved that hand-writing
+          # the spec via `gclient config --spec $spec` breaks -- PowerShell strips the inner
+          # double-quotes, so .gclient became `name: src` (unquoted) -> Python syntax error,
+          # and all retries then failed on the broken config.
+          # We call fetch AT MOST ONCE (guarded by .gclient existence), so the
+          # ".gclient already exists" re-run error can't happen; if fetch's own sync dies on
+          # the network, .gclient still exists and the retry loop below resumes it.
+          if (-not (Test-Path "$env:CHROMIUM_ROOT\.gclient")) {
+            Write-Host "== initial fetch (writes .gclient + first sync) =="
+            & fetch --nohooks --no-history chromium
+            Write-Host "   fetch returned rc=$LASTEXITCODE (ignored here; retry loop verifies)"
+          }
+          if (-not (Test-Path "$env:CHROMIUM_ROOT\.gclient")) {
+            Write-Host "::error::.gclient was not created by fetch"; exit 1
+          }
 
-          # Phase 1: pull the tree (no hooks yet). Retry the flaky multi-GB fetch.
+          # Phase 1: finish pulling the tree. Retry the flaky multi-GB fetch (sync resumes).
           $ok = $false
-          for ($i = 1; $i -le 6; $i++) {
-            Write-Host "== gclient sync (tree) attempt $i/6 =="
+          for ($i = 1; $i -le 8; $i++) {
+            Write-Host "== gclient sync (tree) attempt $i/8 =="
             & gclient sync --nohooks --no-history -R
             if ($LASTEXITCODE -eq 0) { $ok = $true; break }
             Write-Host "   attempt $i failed (rc=$LASTEXITCODE) -- likely a network drop; retry in 30s"
             Start-Sleep -Seconds 30
           }
-          if (-not $ok) { Write-Host "::error::gclient sync (tree) failed after 6 retries (network)"; exit 1 }
+          if (-not $ok) { Write-Host "::error::gclient sync (tree) failed after 8 retries (network)"; exit 1 }
 
           # Pin to the exact release tag.
           Set-Location $env:CHROMIUM_SRC
