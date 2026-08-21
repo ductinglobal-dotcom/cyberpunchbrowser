@@ -13,14 +13,21 @@ google_api_key = ""
 google_default_client_id = ""
 google_default_client_secret = ""
 
-# SafeBrowsing: keep the code compiled (mode 2 = desktop default) so the
+# SafeBrowsing: keep the code compiled at the DESKTOP level so the
 # safe_browsing GN targets that chrome's graph references still resolve.
-# NOTE: mode 0 breaks `gn gen` -- test/feedback targets depend on
-# //components/safe_browsing/... which mode 0 compiles out -> "Unresolved
-# dependencies". Telemetry stays inert anyway because google_api_key is blank
-# (Safe Browsing cannot phone home without an API key), and it can be turned
-# off at runtime via prefs/policy in the CyberPunch wrapper.
-safe_browsing_mode = 2
+# mode meaning (from //components/safe_browsing/buildflags.gni): 0=off,
+# 1=FULL desktop, 2=mobile/Android (external API). The platform default is
+# 1 for !is_android and 2 for is_android.
+# NOTE: mode 0 breaks `gn gen` -- content targets (file_type_policies,
+# client_side_detection) get compiled out -> "Unresolved dependencies".
+# mode 2 ALSO breaks it on Windows: the //components:components_unittests
+# graph then pulls //components/safe_browsing/android:native_java_unittests_java
+# which imports android abi.gni -> assert(is_android...) fails. So for a
+# Windows x64 build the correct value is 1 (full desktop). Telemetry stays
+# inert anyway because google_api_key is blank (Safe Browsing cannot phone
+# home without an API key), and it can be disabled at runtime via prefs/policy
+# in the CyberPunch wrapper.
+safe_browsing_mode = 1
 
 # Do not stop the build on warnings (patched files may warn).
 treat_warnings_as_errors = false
