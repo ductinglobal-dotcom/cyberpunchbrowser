@@ -1,42 +1,56 @@
 From: Stealth Build <build@local>
 Subject: [PATCH 03/05] WebGL: never leak a software renderer
 
-DESIGN DECISION (v146 CloakBrowser parity): the CyberPunch wrapper already
-spoofs WebGL vendor/renderer PER PROFILE via JS injection (FingerprintDb).
-So this native patch must NOT hard-pin one GPU for every profile - that
-would override the per-profile spoof and REDUCE realism. Instead it is a
-guarded fallback: return the REAL driver string unchanged (so the JS layer
-can still override it per profile), and ONLY substitute a common discrete
-GPU when the real renderer is a software rasterizer (SwiftShader / llvmpipe
-/ Mesa / "Software"), which is the one thing that would betray a headless /
-GPU-less box.
+DESIGN (v146 CloakBrowser parity): the CyberPunch wrapper already spoofs
+WebGL vendor/renderer PER PROFILE via JS injection (FingerprintDb). So this
+native patch must NOT hard-pin one GPU for every profile -- that would
+override the per-profile spoof and REDUCE realism. It is a guarded fallback:
+return the REAL driver string unchanged (so the JS layer stays authoritative)
+and ONLY substitute a common discrete GPU when the real renderer is a software
+rasterizer (SwiftShader / llvmpipe / Mesa / Microsoft Basic Render), which is
+the one thing that would betray a headless / GPU-less box.
 
-FIX vs. source doc: the doc's diff had IDENTICAL '-'/'+' lines (a no-op) and
-fabricated context. Real Blink resolves UNMASKED_* via GetUnmaskedString().
-
->>> VERIFY on tag 151.0.7922.108: confirm the helper name/signature in
-    third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
-    and adjust the @@ context if it drifted. CI uses `git apply --3way`.
+VERIFIED against tag 151.0.7922.108: in v151 there is no GetUnmaskedString()
+helper anymore; UNMASKED_VENDOR_WEBGL / UNMASKED_RENDERER_WEBGL are served
+inline inside WebGLRenderingContextBase::getParameter() via
+WebGLAny(script_state, String(ContextGL()->GetString(GL_*))). We wrap those
+two sites. String::LowerASCII()/Contains() and WebGLAny() are already in scope.
 
 --- a/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
 +++ b/third_party/blink/renderer/modules/webgl/webgl_rendering_context_base.cc
-@@ WebGLRenderingContextBase::GetUnmaskedString(GLenum name)
- String WebGLRenderingContextBase::GetUnmaskedString(GLenum name) {
--  return String(ContextGL()->GetString(name));
-+  String real = String(ContextGL()->GetString(name));
-+  // Stealth: only rewrite when a software rasterizer would leak. Real GPUs
-+  // pass through untouched so the wrapper's per-profile spoof stays authoritative.
-+  String lower = real.LowerASCII();
-+  const bool software = lower.Contains("swiftshader") || lower.Contains("llvmpipe") ||
-+                        lower.Contains("software") || lower.Contains("mesa") ||
-+                        lower.Contains("microsoft basic render");
-+  if (software) {
-+    if (name == GL_VENDOR)
-+      return String("Google Inc. (NVIDIA)");
-+    if (name == GL_RENDERER)
-+      return String(
-+          "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, "
-+          "D3D11)");
-+  }
-+  return real;
- }
+@@ -4192,10 +4192,18 @@ ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
+     case WebGLDebugRendererInfo::kUnmaskedRendererWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
+-        return WebGLAny(script_state,
+-                        String(ContextGL()->GetString(GL_RENDERER)));
++        String real = String(ContextGL()->GetString(GL_RENDERER));
++        String lower = real.LowerASCII();
++        // Stealth: only rewrite when a software rasterizer would leak a
++        // headless / GPU-less box. Real GPUs pass through so the wrapper's
++        // per-profile spoof stays authoritative.
++        if (lower.Contains("swiftshader") || lower.Contains("llvmpipe") ||
++            lower.Contains("software") || lower.Contains("mesa") ||
++            lower.Contains("microsoft basic render")) {
++          real = String(
++              "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 "
++              "ps_5_0, D3D11)");
++        }
++        return WebGLAny(script_state, real);
+       }
+       SynthesizeGLError(
+           GL_INVALID_ENUM, "getParameter",
+           "invalid parameter name, WEBGL_debug_renderer_info not enabled");
+       return ScriptValue::CreateNull(script_state->GetIsolate());
+     case WebGLDebugRendererInfo::kUnmaskedVendorWebgl:
+       if (ExtensionEnabled(kWebGLDebugRendererInfoName)) {
+-        return WebGLAny(script_state,
+-                        String(ContextGL()->GetString(GL_VENDOR)));
++        String real = String(ContextGL()->GetString(GL_VENDOR));
++        String lower = real.LowerASCII();
++        if (lower.Contains("swiftshader") || lower.Contains("llvmpipe") ||
++            lower.Contains("software") || lower.Contains("mesa") ||
++            lower.Contains("microsoft basic render")) {
++          real = String("Google Inc. (NVIDIA)");
++        }
++        return WebGLAny(script_state, real);
+       }

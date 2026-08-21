@@ -151,15 +151,14 @@ jobs:
           Set-Location $env:CHROMIUM_SRC
           $patches = Get-ChildItem "$env:GITHUB_WORKSPACE\stealth-repo\patches\*.patch" | Sort-Object Name
           if (-not $patches) { Write-Host "::error::No .patch files found"; exit 1 }
-          # RESILIENT apply: a single patch drifting against this exact tag must NOT
-          # waste the ~3h fetch. We continue on individual failures, print a summary,
-          # and only HARD-FAIL if the critical webdriver patch failed or nothing applied.
-          # (Patches that DO apply matched real context, so they are safe to compile.)
-          $ErrorActionPreference = 'Continue'
-          $applied = @(); $failed = @()
           foreach ($p in $patches) {
             Write-Host "== Applying $($p.Name) =="
+            # Try progressively more tolerant strategies so small line-offset
+            # drift against this exact tag does not fail the (3h) build.
             $ok = $false
+            # git writes progress/errors to stderr; do NOT merge with 2>&1 or the
+            # runner's $ErrorActionPreference='Stop' turns it into a terminating error.
+            $ErrorActionPreference = 'Continue'
             foreach ($opts in @(
                 ,@('--whitespace=fix')
                 ,@('--recount','--whitespace=fix')
@@ -168,20 +167,12 @@ jobs:
               & git apply @opts "$($p.FullName)"
               if ($LASTEXITCODE -eq 0) { $ok = $true; Write-Host "   applied via: git apply $($opts -join ' ')"; break }
             }
-            if ($ok) { $applied += $p.Name }
-            else {
-              $failed += $p.Name
-              Write-Host "::warning::Patch did NOT apply (skipped): $($p.Name) - rebase against tag ${{ github.event.inputs.chromium_tag }}, see QA_REPORT.md"
+            if (-not $ok) {
+              Write-Host "::error::Patch failed to apply: $($p.Name) (rebase against tag ${{ github.event.inputs.chromium_tag }} - see QA_REPORT.md)"
+              exit 1
             }
           }
-          Write-Host "-------- PATCH SUMMARY --------"
-          Write-Host ("applied: {0}" -f ($(if ($applied) { $applied -join ', ' } else { '(none)' })))
-          Write-Host ("skipped: {0}" -f ($(if ($failed)  { $failed  -join ', ' } else { '(none)' })))
-          # Hard-fail only when the essential webdriver patch is missing or nothing applied.
-          $critical = $applied | Where-Object { $_ -like '0001-*webdriver*' }
-          if (-not $critical) { Write-Host "::error::Critical patch 0001 (navigator.webdriver) failed to apply - aborting"; exit 1 }
-          if (-not $applied)  { Write-Host "::error::No patches applied at all - aborting"; exit 1 }
-          Write-Host "Continuing build with $($applied.Count)/$($patches.Count) patch(es) applied."
+          Write-Host "All patches applied."
 
       - name: Generate GN configuration
         shell: cmd

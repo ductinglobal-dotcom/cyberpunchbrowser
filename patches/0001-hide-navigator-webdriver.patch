@@ -1,18 +1,28 @@
 From: Stealth Build <build@local>
 Subject: [PATCH 01/05] Hide navigator.webdriver at Blink level
 
-Force NavigatorAutomationInformation::webdriver() to return false so
+Force the navigator.webdriver getter to return false so
 `navigator.webdriver` is always false regardless of the
---enable-automation / AutomationControlled runtime state.
+--enable-automation / AutomationControlled runtime state or any
+DevTools automation override.
 
---- a/third_party/blink/renderer/core/frame/navigator_automation_information.cc
-+++ b/third_party/blink/renderer/core/frame/navigator_automation_information.cc
-@@ -14,7 +14,7 @@
- #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+VERIFIED against tag 151.0.7922.108: in v151 the getter lives in
+Navigator::webdriver() in core/frame/navigator.cc (the old
+navigator_automation_information.cc/.h no longer exist -- only the .idl
+remains and it binds to Navigator). We replace the whole body so there
+is no unreachable/dead code (Chromium builds with -Werror).
 
- bool NavigatorAutomationInformation::webdriver() const {
--  return RuntimeEnabledFeatures::AutomationControlledEnabled();
+--- a/third_party/blink/renderer/core/frame/navigator.cc
++++ b/third_party/blink/renderer/core/frame/navigator.cc
+@@ -100,7 +100,9 @@ bool Navigator::cookieEnabled() const {
+ bool Navigator::webdriver() const {
+-  if (RuntimeEnabledFeatures::AutomationControlledEnabled())
+-    return true;
+-
+-  bool automation_enabled = false;
+-  probe::ApplyAutomationOverride(GetExecutionContext(), automation_enabled);
+-  return automation_enabled;
++  // Stealth: always report navigator.webdriver === false regardless of the
++  // --enable-automation / AutomationControlled runtime state.
 +  return false;
  }
-
- void NavigatorAutomationInformation::Trace(Visitor* visitor) const {
